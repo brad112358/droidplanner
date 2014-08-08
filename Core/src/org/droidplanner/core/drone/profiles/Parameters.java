@@ -10,6 +10,7 @@ import org.droidplanner.core.drone.DroneInterfaces;
 import org.droidplanner.core.drone.DroneInterfaces.DroneEventsType;
 import org.droidplanner.core.drone.DroneInterfaces.Handler;
 import org.droidplanner.core.drone.DroneInterfaces.OnDroneListener;
+import org.droidplanner.core.drone.variables.Type.FirmwareType;
 import org.droidplanner.core.drone.DroneVariable;
 import org.droidplanner.core.parameters.Parameter;
 
@@ -31,6 +32,8 @@ public class Parameters extends DroneVariable implements OnDroneListener {
 	private static final int TIMEOUT = 1000;
 
 	private int expectedParams;
+	private int retrys; // Workaround for buggy ARDrone FW
+	private int allowMissing; //  Workaround for ARDrone
 
 	@SuppressLint("UseSparseArrays")
 	private HashMap<Integer, Parameter> parameters = new HashMap<Integer, Parameter>();
@@ -53,6 +56,8 @@ public class Parameters extends DroneVariable implements OnDroneListener {
 
 	public void getAllParameters() {
 		parameters.clear();
+		retrys = 3;
+		allowMissing = 0;
 		if (parameterListener != null)
 			parameterListener.onBeginReceivingParameters();
 		MavLinkParameters.requestParametersList(myDrone);
@@ -87,7 +92,7 @@ public class Parameters extends DroneVariable implements OnDroneListener {
 					m_value.param_count);
 
 		// Are all parameters here? Notify the listener with the parameters
-		if (parameters.size() >= m_value.param_count) {
+		if (parameters.size() >= expectedParams - allowMissing) {
 			if (parameterListener != null) {
 				List<Parameter> parameterList = new ArrayList<Parameter>();
 				for (int key : parameters.keySet()) {
@@ -107,6 +112,17 @@ public class Parameters extends DroneVariable implements OnDroneListener {
 			if (!parameters.containsKey(i)) {
 				MavLinkParameters.readParameter(myDrone, i);
 			}
+		}
+		if (myDrone.type.getFirmwareType() == FirmwareType.AR_DRONE) {
+			// Work around an AR Drone firmware bug
+			if (retrys <=0 ) {
+				// After retrys, assume one or more parameters will never arrive
+				allowMissing++;
+			} else {
+				retrys = retrys - 1;
+			}
+			// AR Drone does not respond to read parameter by index so re-request everything
+			MavLinkParameters.requestParametersList(myDrone);
 		}
 	}
 
